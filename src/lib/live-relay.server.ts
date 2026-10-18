@@ -44,6 +44,7 @@ type ProviderEvent = {
   end_ms?: number;
   offset_ms?: number;
   delegation?: { id: string; target: string };
+  appInitiated?: boolean;
 };
 
 export function getLiveConfig(): LiveConfig {
@@ -381,7 +382,7 @@ export function bindLiveConnection(
           JSON.stringify({
             type: "session.commentary.append",
             event_id: crypto.randomUUID(),
-            delegation_id: delegationID,
+            delegation_id: pendingDelegations[0]?.event.appInitiated ? null : delegationID,
             content,
           }),
         );
@@ -593,7 +594,7 @@ export function bindLiveConnection(
         if (!browserReady || typeof event.text !== "string" || !event.text.trim() || event.text.length > 4000) throw new Error("Invalid text message");
         transcripts.push({ role: "user", text: event.text, start_ms: 0, end_ms: 0, listeningSound: false });
         revision++;
-        queueDelegation({ type: "session.delegation.created", delegation: { id: crypto.randomUUID(), target: "client" } });
+        queueDelegation({ type: "session.delegation.created", appInitiated: true, delegation: { id: crypto.randomUUID(), target: "client" } });
         return;
       }
       if (event.type !== "gateway.heartbeat") {
