@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Voice logic lives behind the `VoiceSession` interface in src/lib/voice; the UI never talks to an AI provider directly. Why: lets Gemini Live be swapped in via a server-issued short-lived token without UI changes.
+- Gemini Live auth: browser gets a single-use ephemeral token from `createGeminiLiveToken` (server fn reading GEMINI_API_KEY); the permanent key never leaves the server. Why: Google's recommended client-to-server security model.
