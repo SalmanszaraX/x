@@ -1,7 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { stepCountIs, streamText, tool, type ModelMessage } from "ai";
+import { stepCountIs, streamText, type ModelMessage } from "ai";
 import process from "node:process";
-import { z } from "zod";
 
 export type LiveConfig = {
   baseURL: string;
@@ -12,7 +11,7 @@ export type LiveConfig = {
 };
 
 // Fill from co-loaded knowledge: the gateway URL, the Live model and the resolved chat model.
-const liveSettings = { baseURL: "", liveModel: "", backendModel: "" };
+const liveSettings = { baseURL: "https://ai.gateway.lovable.dev/v1", liveModel: "openai/gpt-live-1", backendModel: "openai/gpt-6-astra", openingInstructions: "Introduce yourself as Zarine, a personal voice assistant. Give a brief greeting and ask how you can help today, then listen." };
 
 export type LiveSocket = {
   readonly readyState: number;
@@ -111,35 +110,17 @@ export function handleLiveRequest(request: Request): Response {
   return new Response(null, response);
 }
 
-const conversationInstructions = `You are Mira, a calm learning companion.
+const conversationInstructions = `You are Zarine, a calm, warm personal voice assistant.
 Speak naturally in brief replies. Ask a focused question when details are unclear.
+Speak English initially, then follow the user's language. Do not invent memories or claim access to external services.
 Backchannel policy: Use moderate listening sounds without taking over.
 Interruption policy: Stop your answer and listen when the user interrupts.
 Delegation policy:
-Backend tools: Reason through questions and plan study sessions across days.
-Delegate to the backend when: The user wants a study schedule or careful reasoning,
+Backend tools: Reason through questions; no external actions or integrations are connected.
+Delegate to the backend when: The user wants careful reasoning,
 or a correction changes a question already being worked on.
 Do not delegate to the backend when: Greeting, clarifying a question, or repeating
 a still-current answer. Wait for the backend result before presenting its answer.`;
-
-const studyScheduleInput = z
-  .object({
-    total_minutes: z.number().int().min(1).max(10_080),
-    days: z.number().int().min(1).max(30),
-  })
-  .strict();
-
-function planStudySchedule(args: z.infer<typeof studyScheduleInput>) {
-  const daily = Math.floor(args.total_minutes / args.days);
-  return {
-    total_minutes: args.total_minutes,
-    days: args.days,
-    sessions: Array.from({ length: args.days }, (_, index) => ({
-      day: index + 1,
-      minutes: daily + (index < args.total_minutes % args.days ? 1 : 0),
-    })),
-  };
-}
 
 function isListeningSound(text: string) {
   const normalized = text.toLowerCase().replace(/[\s\p{Pd}]/gu, "");
@@ -152,7 +133,6 @@ async function answerQuestion(
   correlation: { runID: string; sessionID: string | undefined; delegationID: string },
   signal: AbortSignal,
   consumeInput: () => void,
-  onPlan: (plan: ReturnType<typeof planStudySchedule>) => void,
 ) {
   signal.throwIfAborted();
   const provider = createOpenAI({
@@ -200,26 +180,12 @@ async function answerQuestion(
       },
     },
     system:
-      "Help a spoken learning companion answer the latest user question. " +
+      "Help Zarine, a personal spoken assistant, answer the latest user question. " +
       "Transcripts may be incomplete or corrected. Use the latest correction. " +
       "Continue from completed tool results; do not repeat completed actions. " +
       "Return verified facts and useful next steps in at most 150 words. " +
-      "To display a study schedule for the current request, call plan_study_schedule with its total minutes and days. " +
-      "Ask for missing details instead of guessing. The tool only calculates a draft plan; " +
-      "it does not save calendar events. You have no other tools.",
+      "Ask for missing details instead of guessing. You have no external tools, live search, saved memories or action capabilities.",
     messages,
-    tools: {
-      plan_study_schedule: tool({
-        description: "Distribute a total study time evenly across days and return a draft schedule.",
-        inputSchema: studyScheduleInput,
-        execute: async (args) => {
-          signal.throwIfAborted();
-          const plan = planStudySchedule(args);
-          onPlan(plan);
-          return plan;
-        },
-      }),
-    },
   });
   let completed = false;
   let stepCompleted = false;
@@ -232,7 +198,8 @@ async function answerQuestion(
       if (part.rawValue.type === "response.failed" || part.rawValue.type === "response.incomplete") failed = true;
     }
     if (part.type === "finish-step" && !stepCompleted) failed = true;
-    if (part.type === "error" || part.type === "abort") failed = true;
+    if (part.type === "error") throw part.error;
+    if (part.type === "abort") failed = true;
     if (part.type === "finish") completed = part.finishReason === "stop";
   }
   signal.throwIfAborted();
@@ -285,7 +252,6 @@ export function bindLiveConnection(
   let task: AbortController | undefined;
   const pendingDelegations: Array<{
     event: ProviderEvent;
-    plan?: ReturnType<typeof planStudySchedule>;
   }> = [];
   let completedDelegation: (typeof pendingDelegations)[number] | undefined;
   const backendMessages: ModelMessage[] = [];
@@ -406,7 +372,7 @@ export function bindLiveConnection(
     restartTimer = setTimeout(() => void runDelegation(), 300);
   }
 
-  function deliverResult(delegationID: string, answer: string, plan?: ReturnType<typeof planStudySchedule>) {
+  function deliverResult(delegationID: string, answer: string) {
     if (closing) return;
     if (gateway?.readyState !== 1) return stop();
     try {
@@ -420,7 +386,7 @@ export function bindLiveConnection(
           }),
         );
       }
-      if (plan) emit({ type: "app.study_schedule.plan", delegation_id: delegationID, plan });
+      emit({ type: "app.delegation.completed", delegation_id: delegationID });
       completedDelegation = pendingDelegations.shift();
     } catch {
       stop();
@@ -444,27 +410,18 @@ export function bindLiveConnection(
         controller.signal,
         () => {
           const updates = transcripts.slice(transcriptCursor);
-          if (updates.some(({ role, listeningSound }) => role === "user" && !listeningSound)) delete pending.plan;
           backendMessages.push(...updates.map(({ role, text }) => ({ role, content: text })));
           transcriptCursor = transcripts.length;
           taskRevision = revision;
         },
-        (plan) => {
-          pending.plan = plan;
-        },
       );
       if (closing || controller.signal.aborted) return;
       if (taskRevision !== revision) return;
-      deliverResult(id, answer.trim(), pending.plan);
-    } catch {
+      deliverResult(id, answer.trim());
+    } catch (error) {
       if (closing || controller.signal.aborted) return;
-      backendMessages.push({
-        role: "assistant",
-        content:
-          "The backend attempt failed. Completed tool results remain valid; verify uncertain external actions before any retry.",
-      });
-      if (taskRevision !== revision) return;
-      deliverResult(id, "The backend could not finish the answer. Ask whether the user wants to try again.");
+      emit({ type: "app.error", error: { message: error instanceof Error ? error.message : "Zarine could not finish the answer." } });
+      stop();
     } finally {
       if (task === controller) task = undefined;
       scheduleDelegation();
@@ -517,7 +474,7 @@ export function bindLiveConnection(
       }
       if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
         const role = event.type === "session.input_transcript.delta" ? "user" : "assistant";
-        if (!event.delta?.trim()) return;
+        if (!event.delta) return;
         const listeningSound = role === "user" && Boolean(task) && isListeningSound(event.delta);
         transcripts.push({
           role,
