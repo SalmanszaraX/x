@@ -115,8 +115,11 @@ export function useLiveVoice(
   const resumePlayback = useCallback(() => {
     void controller.current?.resumePlayback();
   }, []);
+  const sendText = useCallback(async (text: string) => {
+    if (!controller.current?.sendText(text)) throw new Error("Start a conversation before sending a message.");
+  }, []);
 
-  return { ...call, audioRef, start, stop, setMuted, resumePlayback };
+  return { ...call, audioRef, start, stop, setMuted, resumePlayback, sendText };
 }
 
 type LiveOptions = {
@@ -396,5 +399,11 @@ function createLiveVoice(options: LiveOptions) {
     }
   }
 
-  return { start, stop, setMuted, resumePlayback };
+  function sendText(text: string) {
+    if (state !== "active" || socket?.readyState !== WebSocket.OPEN || !text.trim() || text.length > 4000) return false;
+    send({ type: "app.text", text });
+    return true;
+  }
+
+  return { start, stop, setMuted, resumePlayback, sendText };
 }

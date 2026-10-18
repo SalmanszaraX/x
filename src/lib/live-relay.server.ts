@@ -589,6 +589,13 @@ export function bindLiveConnection(
         requestGreeting();
         return;
       }
+      if (event.type === "app.text") {
+        if (!browserReady || typeof event.text !== "string" || !event.text.trim() || event.text.length > 4000) throw new Error("Invalid text message");
+        transcripts.push({ role: "user", text: event.text, start_ms: 0, end_ms: 0, listeningSound: false });
+        revision++;
+        queueDelegation({ type: "session.delegation.created", delegation: { id: crypto.randomUUID(), target: "client" } });
+        return;
+      }
       if (event.type !== "gateway.heartbeat") {
         throw new Error("Unsupported client event");
       }
