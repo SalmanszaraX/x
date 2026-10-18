@@ -47,7 +47,9 @@ function Index() {
   const session = useRef(createVoiceSession());
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
   const add = (m: TranscriptMessage) => setMessages((p) => [...p, m]);
 
   async function start() {
