@@ -166,7 +166,7 @@ function Index() {
             {messages.length === 0 && captions.length === 0 && (
               <p className="pt-10 text-center text-sm text-muted-foreground">Your conversation will appear here.</p>
             )}
-            {[...captions, ...messages].map((m) =>
+            {[...captions, ...messages].sort((a, b) => a.at - b.at).map((m) =>
               m.role === "system" ? (
                 <p key={m.id} className="text-center text-xs text-muted-foreground">{m.text}</p>
               ) : (
