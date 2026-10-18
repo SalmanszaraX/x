@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type LiveEvent = {
   type: string;
+  delta?: string;
+  start_ms?: number;
+  end_ms?: number;
   reason?: string;
   error?: { message?: string };
   usage?: { seconds?: number };
