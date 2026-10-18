@@ -377,6 +377,9 @@ export function bindLiveConnection(
     if (closing) return;
     if (gateway?.readyState !== 1) return stop();
     try {
+      if (pendingDelegations[0]?.event.appInitiated) {
+        gateway.send(JSON.stringify({ type: "session.instructions.append", event_id: crypto.randomUUID(), delegation_id: null, content: "The user just asked a typed question. Speak the verified answer in the following commentary now, then listen." }));
+      }
       for (const content of commentaryChunks(answer)) {
         gateway.send(
           JSON.stringify({
