@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Voice logic lives behind the `VoiceSession` interface in src/lib/voice; the UI never talks to an AI provider directly. Why: lets Gemini Live be swapped in via a server-issued short-lived token without UI changes.
