@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
+import { GEMINI_LIVE_MODEL, GEMINI_TOKEN_ENDPOINT, restrictedTokenRequest } from "./gemini-config";
 
 /**
  * Model and constraints taken from the official Gemini Live ephemeral-token docs:
  * https://ai.google.dev/gemini-api/docs/live-api/ephemeral-tokens
  */
-export const GEMINI_LIVE_MODEL = "gemini-3.8-live";
+export { GEMINI_LIVE_MODEL } from "./gemini-config";
 
 export type LiveTokenResult =
   | { ok: true; token: string; model: string; expireTime: string; newSessionExpireTime: string }
@@ -21,27 +22,22 @@ export const createGeminiLiveToken = createServerFn({ method: "POST" }).handler(
       return { ok: false, reason: "not_configured", message: "The Gemini key hasn't been added yet." };
     }
 
-    const now = Date.now();
-    const expireTime = new Date(now + 30 * 60 * 1000).toISOString();
-    const newSessionExpireTime = new Date(now + 60 * 1000).toISOString();
-
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/auth_tokens", {
+    const request = restrictedTokenRequest(Date.now());
+    const { expireTime, newSessionExpireTime } = request;
+    let res: Response;
+    try {
+      res = await fetch(GEMINI_TOKEN_ENDPOINT, {
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        uses: 1,
-        expireTime,
-        newSessionExpireTime,
-        liveConnectConstraints: {
-          model: `models/${GEMINI_LIVE_MODEL}`,
-          config: { sessionResumption: {}, responseModalities: ["AUDIO"] },
-        },
-      }),
-    });
+      body: JSON.stringify(request),
+      });
+    } catch {
+      return { ok: false, reason: "upstream_error", message: "The voice service could not be reached. No fallback connection was started." };
+    }
 
     if (!res.ok) {
-      console.error("Gemini auth_tokens failed", res.status, await res.text().catch(() => ""));
-      return { ok: false, reason: "upstream_error", message: "Google couldn't issue a voice token right now." };
+      // Never log upstream bodies: they may include credentials or token material.
+      return { ok: false, reason: "upstream_error", message: `The voice service could not authorize a call (${res.status}). No fallback connection was started.` };
     }
     const body = (await res.json()) as { name?: string };
     if (!body.name) {
