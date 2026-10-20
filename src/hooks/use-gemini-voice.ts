@@ -3,7 +3,7 @@ import { createGeminiLiveToken } from "@/lib/voice/gemini-token.functions";
 import { GEMINI_VOICE_ENDPOINT, restrictedLiveSetup } from "@/lib/voice/gemini-config";
 import { decodePcm, encodePcm } from "@/lib/voice/pcm";
 import workletUrl from "@/lib/voice/microphone-worklet.js?url";
-import type { LiveEvent } from "./use-live-voice";
+import type { LiveEvent } from "@/lib/voice/events";
 
 type State = {
   status: "idle" | "connecting" | "connected" | "stopping" | "closed";
@@ -54,7 +54,9 @@ export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
   }, []);
   const resumePlayback = useCallback(() => { void controller.current?.resumePlayback(); }, []);
   const sendText = useCallback(async (text: string) => {
-    if (!controller.current?.sendText(text)) throw new Error("Start a conversation before sending a message.");
+    const voice = controller.current;
+    if (!voice) throw new Error("Start a conversation before sending a message.");
+    await voice.sendText(text);
   }, []);
   return { ...call, audioRef, start, stop, setMuted, resumePlayback, sendText };
 }
@@ -168,14 +170,17 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     }
     const content = event.serverContent;
     if (!content) return;
-    if (content.interrupted) { clearPlayback(); emit({ type: "app.interrupted" }); }
+    if (content.interrupted) { clearPlayback(); captionTimes.zarine.finished = true; emit({ type: "app.interrupted" }); }
     caption("user", content.inputTranscription);
     caption("zarine", content.outputTranscription);
     for (const part of content.modelTurn?.parts ?? []) {
       const inline = part.inlineData;
       if (!content.interrupted && inline?.data && inline.mimeType?.startsWith("audio/pcm")) play(inline.data, inline.mimeType);
     }
-    if (content.turnComplete) emit({ type: "app.delegation.completed" });
+    if (content.turnComplete) {
+      captionTimes.zarine.finished = true;
+      emit({ type: "app.delegation.completed" });
+    }
   }
   async function start() {
     window.addEventListener("pagehide", stop);
@@ -196,7 +201,7 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
       }
       if (microphone) {
         await context.audioWorklet.addModule(workletUrl);
-        if (state === "closed") return;
+        if (closed()) return;
         input = context.createMediaStreamSource(microphone);
         capture = new AudioWorkletNode(context, "zarine-microphone");
         input.connect(capture);
@@ -239,12 +244,13 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     if (value && state === "active") send({ realtimeInput: { audioStreamEnd: true } });
     return true;
   }
-  function sendText(text: string) {
-    if (state !== "active" || !text.trim() || text.length > 4000) return false;
+  async function sendText(text: string) {
+    if (state !== "active" || !text.trim() || text.length > 4000) throw new Error("Start a conversation before sending a message.");
     clearPlayback();
+    captionTimes.zarine.finished = true;
     const sent = send({ clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true } });
-    if (sent) emit({ type: "app.delegation.pending" });
-    return sent;
+    if (!sent) throw new Error("The voice connection is unavailable.");
+    emit({ type: "app.delegation.pending" });
   }
   return { start, stop, setMuted, resumePlayback, sendText };
 }
