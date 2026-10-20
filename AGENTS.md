@@ -11,6 +11,7 @@
 
 - Voice logic lives behind the `VoiceSession` interface and `useVoiceSession` adapter in src/lib/voice; the UI never talks to an AI provider directly. Why: keeps transport and provider changes out of presentation code.
 - Gemini Live auth: browser gets a single-use ephemeral token from `createGeminiLiveToken` (server fn reading GEMINI_API_KEY); the permanent key never leaves the server. Why: Google's recommended client-to-server security model.
-- Active voice uses the direct Google Developer API controller behind useVoiceSession; the legacy Gateway relay and hook are inactive and must never be a fallback. Why: avoids unintended workspace voice charges.
+- Active voice uses the direct Google Developer API controller behind useVoiceSession; the old relay is disabled and must never be a fallback. Why: avoids unintended workspace voice charges.
 - The direct voice controller owns ordered socket events, AudioWorklet capture, queued PCM playback and immediate Stop/interruption cleanup; transcript state remains per-page. Why: preserves the existing UI behavior across transport changes.
 - Temporary-token restrictions use the Google REST discovery schema's bidiGenerateContentSetup, with the full setup fixed server-side and no fieldMask. Why: prevents client overrides and avoids unsupported SDK field names in raw REST.
+- Typed questions use a server function with Google's OpenAI-compatible Chat Completions and the existing OpenAI adapter; the direct Live connection reads the answer aloud. Why: keeps text intelligence separate from audio and preserves server-only credentials and per-call history.

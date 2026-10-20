@@ -3,7 +3,8 @@ import { createGeminiLiveToken } from "@/lib/voice/gemini-token.functions";
 import { GEMINI_VOICE_ENDPOINT, restrictedLiveSetup } from "@/lib/voice/gemini-config";
 import { decodePcm, encodePcm } from "@/lib/voice/pcm";
 import workletUrl from "@/lib/voice/microphone-worklet.js?url";
-import type { LiveEvent } from "./use-live-voice";
+import type { LiveEvent } from "@/lib/voice/events";
+import { answerGeminiText } from "@/lib/voice/chat.functions";
 
 type State = {
   status: "idle" | "connecting" | "connected" | "stopping" | "closed";
@@ -54,7 +55,9 @@ export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
   }, []);
   const resumePlayback = useCallback(() => { void controller.current?.resumePlayback(); }, []);
   const sendText = useCallback(async (text: string) => {
-    if (!controller.current?.sendText(text)) throw new Error("Start a conversation before sending a message.");
+    const voice = controller.current;
+    if (!voice) throw new Error("Start a conversation before sending a message.");
+    await voice.sendText(text);
   }, []);
   return { ...call, audioRef, start, stop, setMuted, resumePlayback, sendText };
 }
@@ -89,6 +92,15 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     user: { start: 0, end: 0, finished: true }, zarine: { start: 0, end: 0, finished: true },
   };
   let messages = Promise.resolve();
+  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  let textRequest: AbortController | undefined;
+  let historyRevision = 0;
+  let currentCaption: Record<"user" | "zarine", string> = { user: "", zarine: "" };
+  function saveCaption(role: "user" | "zarine") {
+    const text = currentCaption[role].trim();
+    if (text) history.push({ role: role === "user" ? "user" : "assistant", content: text });
+    currentCaption[role] = "";
+  }
   function closed() { return state === "closed"; }
 
   function clearPlayback() {
@@ -99,6 +111,7 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
   function stop() {
     if (state === "closed") return;
     state = "closed";
+    textRequest?.abort();
     emit({ type: "app.stopping" });
     clearTimeout(deadline);
     window.removeEventListener("pagehide", stop);
@@ -140,6 +153,9 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
       delta: transcription.text, start_ms: times.start, end_ms: times.end,
     });
     times.finished = transcription.finished === true;
+    currentCaption[role] += transcription.text ?? "";
+    if (role === "user" && transcription.text) { historyRevision++; textRequest?.abort(); }
+    if (times.finished) saveCaption(role);
   }
   function play(data: string, mime: string) {
     if (state !== "active" || !context || !destination) return;
@@ -168,14 +184,17 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     }
     const content = event.serverContent;
     if (!content) return;
-    if (content.interrupted) { clearPlayback(); emit({ type: "app.interrupted" }); }
+    if (content.interrupted) { clearPlayback(); saveCaption("zarine"); captionTimes.zarine.finished = true; emit({ type: "app.interrupted" }); }
     caption("user", content.inputTranscription);
     caption("zarine", content.outputTranscription);
     for (const part of content.modelTurn?.parts ?? []) {
       const inline = part.inlineData;
       if (!content.interrupted && inline?.data && inline.mimeType?.startsWith("audio/pcm")) play(inline.data, inline.mimeType);
     }
-    if (content.turnComplete) emit({ type: "app.delegation.completed" });
+    if (content.turnComplete) {
+      saveCaption("zarine"); captionTimes.zarine.finished = true;
+      emit({ type: "app.delegation.completed" });
+    }
   }
   async function start() {
     window.addEventListener("pagehide", stop);
@@ -196,7 +215,7 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
       }
       if (microphone) {
         await context.audioWorklet.addModule(workletUrl);
-        if (state === "closed") return;
+        if (closed()) return;
         input = context.createMediaStreamSource(microphone);
         capture = new AudioWorkletNode(context, "zarine-microphone");
         input.connect(capture);
@@ -239,12 +258,26 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     if (value && state === "active") send({ realtimeInput: { audioStreamEnd: true } });
     return true;
   }
-  function sendText(text: string) {
-    if (state !== "active" || !text.trim() || text.length > 4000) return false;
+  async function sendText(text: string) {
+    if (state !== "active" || !text.trim() || text.length > 4000) throw new Error("Start a conversation before sending a message.");
     clearPlayback();
-    const sent = send({ clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true } });
-    if (sent) emit({ type: "app.delegation.pending" });
-    return sent;
+    textRequest?.abort();
+    saveCaption("user"); saveCaption("zarine");
+    captionTimes.zarine.finished = true;
+    history.push({ role: "user", content: text });
+    const revision = ++historyRevision;
+    const request = new AbortController(); textRequest = request;
+    emit({ type: "app.delegation.pending" });
+    try {
+      const result = await answerGeminiText({ data: { messages: history.slice(-200) }, signal: request.signal });
+      if (closed() || request.signal.aborted || revision !== historyRevision) return;
+      if (!result.ok) throw new Error(result.message);
+      send({ clientContent: { turns: [{ role: "user", parts: [{ text: `The user asked: ${JSON.stringify(text)}. Read this answer aloud naturally, without adding anything: ${JSON.stringify(result.text)}` }] }], turnComplete: true } });
+    } catch (error) {
+      if (!request.signal.aborted && !closed()) throw new Error(error instanceof Error ? error.message : "Zarine could not answer right now.");
+    } finally {
+      if (textRequest === request) { textRequest = undefined; emit({ type: "app.delegation.completed" }); }
+    }
   }
   return { start, stop, setMuted, resumePlayback, sendText };
 }

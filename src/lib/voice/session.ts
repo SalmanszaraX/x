@@ -1,4 +1,4 @@
-import type { LiveEvent } from "@/hooks/use-live-voice";
+import type { LiveEvent } from "./events";
 import { useGeminiVoice } from "@/hooks/use-gemini-voice";
 import type { VoiceSession } from "./types";
 
