@@ -2,8 +2,9 @@
 - [x] Add secure AI Gateway Live relay and microphone playback.
 - [x] Connect Zarine status, transcripts, mute, and stopping controls.
 - [x] Test transcript handling and verify a real call or report its blocker.
-- [ ] Verify Google model access, ephemeral authentication and official Live protocol.
-- [ ] Switch voice only after feasibility is verified, preserving all existing interactions and avoiding gateway fallback.
-- [ ] Test direct voice and report model, endpoints, billing and any blockers.
-- [ ] Audit and migrate text intelligence to Google's OpenAI-compatible API while preserving conversation history.
-- [ ] Remove legacy Gateway relay, key references and unused dependencies from the application.
+- [x] Verify Google model access, ephemeral authentication and official Live protocol.
+- [x] Switch to restricted direct voice without gateway fallback; preserve controls and typed voice messages.
+- [x] Test direct voice and record partial microphone recognition and full text-endpoint timeout blockers in README.
+- [ ] Activate separate OpenAI-compatible text intelligence: blocked by Google's documented endpoint not responding; prepared function remains disconnected to preserve typed replies.
+- [x] Remove legacy Gateway relay, key references and unused voice-client dependency from the application.
+- [ ] Fully verify spoken-question recognition and spoken barge-in: synthetic microphone input produced only partial transcripts; do not claim complete voice verification or remove the billing footer yet.
