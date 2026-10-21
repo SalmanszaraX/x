@@ -4,7 +4,7 @@ import { restrictedTokenRequest } from "./gemini-config";
 
 describe("Real tool execution", () => {
   it("declares web search in the restricted voice setup", () => {
-    expect(restrictedTokenRequest(0).bidiGenerateContentSetup.tools[0].functionDeclarations.map((t) => t.name)).toEqual(["search_web"]);
+    expect(restrictedTokenRequest(0).bidiGenerateContentSetup.tools[0]?.functionDeclarations.map((t) => t.name)).toEqual(["search_web"]);
   });
   it("does not execute unconnected tools", async () => {
     const request = vi.fn();
@@ -23,7 +23,10 @@ describe("Real tool execution", () => {
     const result = await executeTool("search_web", { query: "current facts" }, "test", undefined, request);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.sources).toEqual([{ title: "Source", url: "https://example.com/news" }]);
-    expect(JSON.parse(request.mock.calls[0][1].body).tools).toEqual([{ google_search: {} }]);
+    const call = request.mock.calls[0];
+    expect(call).toBeDefined();
+    if (!call) throw new Error("Search did not execute");
+    expect(JSON.parse(call[1].body).tools).toEqual([{ google_search: {} }]);
   });
   it("does not claim a search when no grounding sources were returned", async () => {
     const request = vi.fn().mockResolvedValue(Response.json({ candidates: [{ content: { parts: [{ text: "An unsupported answer" }] } }] }));

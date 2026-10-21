@@ -1,6 +1,7 @@
 import type { SearchSource } from "./tools";
 
 export type LiveEvent = {
+  id?: string;
   sources?: SearchSource[];
   searchEntryPoint?: string;
   type: string;
