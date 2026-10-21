@@ -7,6 +7,7 @@ import { appendCaption, voiceSeconds, type CaptionRow } from "@/lib/voice/transc
 import { Button } from "@/components/ui/button";
 import type { TranscriptMessage, VoiceStatus } from "@/lib/voice/types";
 import { cn } from "@/lib/utils";
+import type { SearchSource } from "@/lib/voice/tools";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -48,9 +49,12 @@ function Index() {
   const [captions, setCaptions] = useState<CaptionRow[]>([]);
   const [usage, setUsage] = useState<number | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; sources: SearchSource[]; searchEntryPoint: string }>>([]);
   const [text, setText] = useState("");
   const speech = useRef(false);
   const call = useVoiceSession((event) => {
+    if (event.type === "app.tool.result" && event.sources) setSearchResults((rows) => [...rows, { id: String(event.id), sources: event.sources ?? [], searchEntryPoint: event.searchEntryPoint ?? "" }]);
+    if (event.type === "app.tool.error") { setThinking(false); setMessages((rows) => [...rows, msg("system", event.error?.message ?? "The tool could not finish.")]); }
     if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
       if (typeof event.delta === "string" && typeof event.start_ms === "number" && typeof event.end_ms === "number") {
         setCaptions((rows) => appendCaption(rows, event.type === "session.input_transcript.delta" ? "user" : "zarine", event.delta as string, event.start_ms as number, event.end_ms as number));
@@ -76,6 +80,7 @@ function Index() {
     speech.current = false;
     setMessages([]);
     setCaptions([]);
+    setSearchResults([]);
     setUsage(null);
     call.session.connect();
   }
@@ -179,6 +184,11 @@ function Index() {
                 </div>
               ),
             )}
+            {searchResults.map((result) => <div key={result.id} className="space-y-2 text-xs">
+              <p className="font-medium text-muted-foreground">Sources</p>
+              {result.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" className="block break-words text-primary underline">{source.title}</a>)}
+              {result.searchEntryPoint && <iframe title="Search suggestions" srcDoc={result.searchEntryPoint} sandbox="allow-popups allow-popups-to-escape-sandbox" className="h-24 w-full border-0" />}
+            </div>)}
             <div ref={endRef} />
           </div>
           <form onSubmit={send} className="flex gap-2 border-t p-3">

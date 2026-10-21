@@ -1,4 +1,9 @@
+import type { SearchSource } from "./tools";
+
 export type LiveEvent = {
+  id?: string;
+  sources?: SearchSource[];
+  searchEntryPoint?: string;
   type: string;
   delta?: string;
   start_ms?: number;

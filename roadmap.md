@@ -1,4 +1,7 @@
 # Zarine live voice
+- [x] Audit prompts and tools; add model-selected real search with sources while preserving direct voice.
+- [x] Test ordinary conversation and real current-search attempt; verify quota and network failures separately.
+- [ ] Verify successful live search and source-link display: blocked by Google generateContent HTTP 429 RESOURCE_EXHAUSTED for the saved account; no current results returned.
 - [x] Add secure AI Gateway Live relay and microphone playback.
 - [x] Connect Zarine status, transcripts, mute, and stopping controls.
 - [x] Test transcript handling and verify a real call or report its blocker.

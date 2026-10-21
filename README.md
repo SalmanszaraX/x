@@ -78,6 +78,36 @@ Browser checks used the real app at `http://localhost:8080` and real Google resp
 - Published behavior and physical Android microphone recognition have not been tested. This app is not published.
 - Existing access policy remains unchanged: the token function is same-origin/CSRF-protected but not login-protected. Single-use tokens protect the permanent key, not public usage quotas; do not treat this as authenticated access control.
 
+## Conversational tools audit — 21 October 2026
+
+### Root causes
+
+- `src/lib/voice/gemini-config.ts`: the active Live prompt cautioned against claiming tool access and declared no tools at all. API access alone did not provide browsing.
+- `src/hooks/use-gemini-voice.ts`: the direct socket supported audio, transcripts and typed conversation, but had no handling for Live `toolCall`, `toolResponse` or cancellation events.
+- `src/lib/voice/chat-config.ts`: the separate inactive text prompt explicitly said it had no external tools/live search. `chat.functions.ts` remains disconnected; it was not causing the active voice reply, and its instructions now clarify that boundary.
+- Existing server functions provisioned Live tokens and prepared text answers; none performed web search. No search integration was configured or invoked.
+- `GEMINI_API_KEY` presence and the Google models catalog were checked without revealing credentials. The key/model/provider and direct voice endpoint remain unchanged. Lovable Cloud was enabled as required for added server-side functionality; no application tables, storage, sign-in UI or Gateway AI use were added.
+
+### Smallest fixes
+
+- The restricted server-owned Live setup now declares `search_web`; Zarine decides when to call it, instead of applying a fixed search workflow to all conversation.
+- `tools.ts` owns declarations, validated search arguments and serializable results; `tools.functions.ts` exposes the server RPC; `search.server.ts` executes only the explicitly registered read-only tool. Unknown tools are rejected without performing an action. Future tools must be explicitly registered and permission-checked before execution; no email, private-account or posting actions are connected.
+- Search calls native Google `POST /v1beta/models/gemini-3.8-flash:generateContent` with `google_search`. The model is present in this account's catalog. This avoids the previously unresponsive OpenAI-compatible endpoint and does not replace Live voice.
+- The controller returns each result to Live with its matching function-call ID. Provider cancellations and End Conversation abort pending RPCs and discard late results, while ordered audio processing continues without awaiting search.
+- Search success requires actual web-search metadata, answer text and HTTPS grounding-source links. No sources means failure, not a fabricated grounded answer. Source links appear in the existing transcript; returned Google search suggestions render in a sandboxed frame. The successful source UI has not yet been verified with real results.
+- Failures return safe, accurate errors (quota, authorization, service failure or timeout), never secret-bearing upstream bodies. The model is instructed not to pretend success. The existing same-origin public access policy is unchanged; this is not login-protected quota control.
+
+Official references: https://ai.google.dev/api/live, https://ai.google.dev/gemini-api/docs/live-api/tools, https://ai.google.dev/gemini-api/docs/generate-content/google-search. Live built-in search support for the selected model was not assumed; its declared function is executed explicitly by our server.
+
+### Actual test results
+
+- **General conversation, real browser/Google session:** Zarine greeted the user, answered the typed “What is seven times eight?” with “fifty-six,” returned 49 PCM audio messages over the tested session, and made zero tool calls for the arithmetic question.
+- **Current-information request, separately in the same real session:** “Search the web now for the latest stable Chrome desktop version, with current source links” caused a real `search_web` function call, a server-side Google request and a matching unsuccessful tool response. Google returned HTTP 429; the transcript displayed the account quota/rate-limit problem and Zarine said she could not check the current version. No current result or source was invented.
+- **Tool failures:** real quota failure verified end-to-end; unit tests separately verify unknown-tool refusal, missing authorization, ungrounded responses and network failure. Successful grounded-result parsing/source filtering was tested with a fixture only, not claimed as real search verification.
+- **Regression checks:** 20 tests passed; preview check reported build OK. End Conversation released audio and re-enabled Start. Browser reported no runtime errors. The existing screen and direct Google voice were preserved. Physical microphone recognition and spoken barge-in remain unverified from the earlier migration.
+
+**Blocker:** the saved Google account currently rejects generateContent search with `RESOURCE_EXHAUSTED` (429). A second catalog-listed model returned the same status; no silent model/provider fallback was added. A successful source-backed search must be retested after account quota/access is available. Google billing settings were not changed or verified; the code cannot resolve account quota. The old footer was left intact under the standing requirement, despite not describing the active direct voice connection.
+
 This project was built with [Lovable](https://lovable.dev).
 
 ## Build with Lovable
