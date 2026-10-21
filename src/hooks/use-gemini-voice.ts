@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createGeminiLiveToken } from "@/lib/voice/gemini-token.functions";
+import { runVoiceTool } from "@/lib/voice/tools.functions";
+import { useServerFn } from "@tanstack/react-start";
+import type { ToolResult } from "@/lib/voice/tools";
 import { GEMINI_VOICE_ENDPOINT, restrictedLiveSetup } from "@/lib/voice/gemini-config";
 import { decodePcm, encodePcm } from "@/lib/voice/pcm";
 import workletUrl from "@/lib/voice/microphone-worklet.js?url";
@@ -16,6 +19,7 @@ type State = {
 const initial: State = { status: "idle", error: null, muted: false, playbackBlocked: false, hasConnected: false, finalized: null };
 
 export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
+  const execute = useServerFn(runVoiceTool);
   const audioRef = useRef<HTMLAudioElement>(null);
   const controller = useRef<ReturnType<typeof createDirectVoice> | null>(null);
   const latest = useRef(onEvent);
@@ -30,7 +34,7 @@ export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
   const start = useCallback(() => {
     const audio = audioRef.current;
     if (!mounted.current || controller.current || !audio) return;
-    const voice = createDirectVoice(audio, (event) => {
+    const voice = createDirectVoice(audio, execute, (event) => {
       if (!mounted.current || controller.current !== voice) return;
       if (event.type === "app.connected") setCall((s) => ({ ...s, status: "connected", hasConnected: true }));
       if (event.type === "app.error") setCall((s) => ({ ...s, error: event.error?.message ?? "Voice connection failed." }));
@@ -47,7 +51,7 @@ export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
     controller.current = voice;
     setCall({ ...initial, status: "connecting" });
     void voice.start();
-  }, []);
+  }, [execute]);
   const stop = useCallback(() => controller.current?.stop(), []);
   const setMuted = useCallback((muted: boolean) => {
     if (controller.current?.setMuted(muted)) setCall((s) => ({ ...s, muted }));
@@ -62,6 +66,8 @@ export function useGeminiVoice(onEvent: (event: LiveEvent) => void) {
 }
 
 type ServerMessage = {
+  toolCall?: { functionCalls?: Array<{ id?: string; name?: string; args?: unknown }> };
+  toolCallCancellation?: { ids?: string[] };
   setupComplete?: object;
   goAway?: object;
   error?: { code?: number };
@@ -74,7 +80,7 @@ type ServerMessage = {
   };
 };
 
-function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => void) {
+function createDirectVoice(audio: HTMLAudioElement, execute: (options: { data: { name: string; args: unknown }; signal?: AbortSignal }) => Promise<ToolResult>, emit: (event: LiveEvent) => void) {
   let state: "starting" | "active" | "closed" = "starting";
   let socket: WebSocket | undefined;
   let microphone: MediaStream | undefined;
@@ -86,6 +92,7 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let nextAudioTime = 0;
   const sources = new Set<AudioBufferSourceNode>();
+  const pendingTools = new Map<string, AbortController>();
   const startedAt = Date.now();
   const captionTimes: Record<"user" | "zarine", { start: number; end: number; finished: boolean }> = {
     user: { start: 0, end: 0, finished: true }, zarine: { start: 0, end: 0, finished: true },
@@ -101,6 +108,8 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
   function stop() {
     if (state === "closed") return;
     state = "closed";
+    for (const task of pendingTools.values()) task.abort();
+    pendingTools.clear();
     emit({ type: "app.stopping" });
     clearTimeout(deadline);
     window.removeEventListener("pagehide", stop);
@@ -162,6 +171,22 @@ function createDirectVoice(audio: HTMLAudioElement, emit: (event: LiveEvent) => 
     if (state === "closed") return;
     if (event.error) return fail(`The voice service rejected the call (${event.error.code ?? "unknown"}). No fallback was started.`);
     if (event.goAway) return fail("The voice session is ending. Start a new conversation to continue.");
+    for (const id of event.toolCallCancellation?.ids ?? []) {
+      pendingTools.get(id)?.abort(); pendingTools.delete(id);
+    }
+    for (const tool of event.toolCall?.functionCalls ?? []) {
+      if (!tool.id || !tool.name || pendingTools.has(tool.id)) continue;
+      const id = tool.id, name = tool.name;
+      const task = new AbortController(); pendingTools.set(id, task);
+      emit({ type: "app.delegation.pending" });
+      void execute({ data: { name, args: tool.args ?? {} }, signal: task.signal }).catch((): ToolResult => ({ ok: false, error: "The tool connection failed. No action was completed." })).then((result) => {
+        if (closed() || task.signal.aborted || pendingTools.get(id) !== task) return;
+        pendingTools.delete(id);
+        if (result.ok) emit({ type: "app.tool.result", id, query: tool.args, ...result });
+        else emit({ type: "app.tool.error", error: { message: result.error } });
+        send({ toolResponse: { functionResponses: [{ id, name, response: result }] } });
+      });
+    }
     if (event.setupComplete && state === "starting") {
       clearTimeout(deadline); state = "active";
       emit({ type: "app.connected" });
