@@ -1,4 +1,6 @@
 # Zarine live voice
+- [ ] Audit prompts and tools; add model-selected real search with sources while preserving direct voice.
+- [ ] Verify ordinary conversation, current search, and tool failures separately.
 - [x] Add secure AI Gateway Live relay and microphone playback.
 - [x] Connect Zarine status, transcripts, mute, and stopping controls.
 - [x] Test transcript handling and verify a real call or report its blocker.
