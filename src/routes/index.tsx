@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Send, Play } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Send, Play, Settings } from "lucide-react";
+import { getVoiceHealth, type HealthStatus } from "@/lib/voice/health.functions";
 import { VoiceOrb } from "@/components/zarine/VoiceOrb";
 import { useVoiceSession } from "@/lib/voice/session";
 import { appendCaption, voiceSeconds, type CaptionRow } from "@/lib/voice/transcript";
