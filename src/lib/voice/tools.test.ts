@@ -8,7 +8,7 @@ describe("Real tool execution", () => {
   });
   it("does not execute unconnected tools", async () => {
     const request = vi.fn();
-    expect((await executeTool("send_email", {}, "test", undefined, request)).ok).toBe(false);
+    expect((await executeTool("send_email", {}, { geminiKey: "test" }, undefined, request)).ok).toBe(false);
     expect(request).not.toHaveBeenCalled();
   });
   it("requires configured authorization", async () => {
