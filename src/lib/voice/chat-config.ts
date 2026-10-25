@@ -1,5 +1,7 @@
+import { GEMINI_CHAT_MODEL } from "./gemini-config";
+
 export const GEMINI_CHAT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-export const GEMINI_CHAT_MODEL = "gemini-3.8-flash";
+export { GEMINI_CHAT_MODEL };
 export const CHAT_SYSTEM_PROMPT =
   "Help Zarine, a personal spoken assistant, answer the latest user question. " +
   "Transcripts may be incomplete or corrected. Use the latest correction. " +

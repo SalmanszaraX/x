@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Send, Play } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Send, Play, Settings } from "lucide-react";
+import { getVoiceHealth, type HealthStatus } from "@/lib/voice/health.functions";
 import { VoiceOrb } from "@/components/zarine/VoiceOrb";
 import { useVoiceSession } from "@/lib/voice/session";
 import { appendCaption, voiceSeconds, type CaptionRow } from "@/lib/voice/transcript";
@@ -51,6 +52,8 @@ function Index() {
   const [thinking, setThinking] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<{ id: string; sources: SearchSource[]; searchEntryPoint: string }>>([]);
   const [text, setText] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
   const speech = useRef(false);
   const call = useVoiceSession((event) => {
     if (event.type === "app.tool.result" && event.sources) setSearchResults((rows) => [...rows, { id: String(event.id), sources: event.sources ?? [], searchEntryPoint: event.searchEntryPoint ?? "" }]);
@@ -207,8 +210,27 @@ function Index() {
         </section>
       </div>
 
-      <footer className="mt-8 flex flex-wrap justify-between gap-3 border-t py-4 text-xs text-muted-foreground">
-        <p>Powered by Lovable AI · Voice usage is billed, including silence and a 15-second minimum.</p>
+      <section className="mt-8 border-t pt-4">
+        <Button variant="ghost" className="gap-2 text-xs text-muted-foreground" onClick={() => {
+          const next = !showSettings;
+          setShowSettings(next);
+          if (next && !health) void getVoiceHealth().then(setHealth).catch(() => setHealth(null));
+        }}>
+          <Settings className="h-4 w-4" /> Settings & diagnostics
+        </Button>
+        {showSettings && (
+          <dl className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <div><dt className="font-medium text-foreground">Voice connection key</dt><dd>{health ? (health.voiceKey === "configured" ? "Configured (stored server-side, never shown)" : "Not configured") : "Checking…"}</dd></div>
+            <div><dt className="font-medium text-foreground">Web search</dt><dd>{health ? health.searchProvider : "Checking…"}</dd></div>
+            <div><dt className="font-medium text-foreground">Automation workflow (n8n)</dt><dd>{health ? (health.n8n === "configured" ? "Connected" : "Not connected — ask Zarine to set it up before using automations") : "Checking…"}</dd></div>
+            <div><dt className="font-medium text-foreground">Hands-free wake word</dt><dd>Not available in the browser app — use Start Conversation (push-to-talk) instead.</dd></div>
+            {health && <div className="sm:col-span-2"><dt className="font-medium text-foreground">Models (technical)</dt><dd>Voice {health.liveModel} · Search {health.searchModel} · Text {health.chatModel}</dd></div>}
+          </dl>
+        )}
+      </section>
+
+      <footer className="mt-4 flex flex-wrap justify-between gap-3 border-t py-4 text-xs text-muted-foreground">
+        <p>Zarine uses a paid Google voice account: connected call time is billed, including silence.</p>
         {usage !== null && <p>{usage} voice seconds{call.finalized === false ? " · Final usage unconfirmed" : ""}</p>}
       </footer>
     </main>

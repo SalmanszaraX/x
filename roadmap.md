@@ -11,3 +11,14 @@
 - [ ] Activate separate OpenAI-compatible text intelligence: blocked by Google's documented endpoint not responding; prepared function remains disconnected to preserve typed replies.
 - [x] Remove legacy Gateway relay, key references and unused voice-client dependency from the application.
 - [ ] Fully verify spoken-question recognition and spoken barge-in: synthetic microphone input produced only partial transcripts; do not claim complete voice verification or remove the billing footer yet.
+# Master build/repair brief (uploaded)
+- [ ] Verify current search quota status and source-link display with a real search.
+- [ ] Add fetch_page tool with SSRF protections (https only, no private ranges, size/timeout limits).
+- [ ] Add n8n webhook tool: N8N_WEBHOOK_URL secret, approval-gated, no fabricated statuses.
+- [ ] Settings/diagnostics panel with truthful statuses + server health check (no secrets exposed).
+- [ ] Central server-side model config; document model identifiers.
+- [ ] Wake word: honest opt-in only if locally reliable; otherwise document limitation + push-to-talk.
+- [ ] Approval flow for consequential actions before n8n/production triggers.
+- [ ] Expand tests: tools, search failure, SSRF blocks, token config; run full suite.
+- [ ] Update README: setup, secrets, testing, verified vs untested features.
+- [ ] Final report per brief section 18 (verified vs untested, blockers).
