@@ -12,7 +12,8 @@ const BLOCKED_HOSTNAMES = new Set([
 const BLOCKED_SUFFIXES = [".local", ".internal", ".localhost", ".corp", ".lan"];
 
 function isPrivateIpv4(parts: number[]): boolean {
-  const [a, b] = parts;
+  const a = parts[0] ?? -1;
+  const b = parts[1] ?? -1;
   return (
     a === 0 || a === 10 || a === 127 ||
     (a === 169 && b === 254) ||

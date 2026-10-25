@@ -8,9 +8,9 @@ type GroundedResponse = { candidates?: Array<{
 }> };
 
 export type ToolConfig = {
-  geminiKey?: string;
-  n8nWebhookUrl?: string;
-  n8nWebhookSecret?: string;
+  geminiKey: string | undefined;
+  n8nWebhookUrl?: string | undefined;
+  n8nWebhookSecret?: string | undefined;
 };
 
 // Only explicitly registered read-only or approval-gated tools execute. Never fetch model-supplied URLs outside fetch_page's validation.
