@@ -1,7 +1,9 @@
 import { TOOL_DECLARATIONS } from "./tools";
 
-// Verified against this key's Google models catalog and a constrained Live handshake.
+// Central model configuration. Verified against this key's Google models catalog.
 export const GEMINI_LIVE_MODEL = "gemini-3.8-live";
+export const GEMINI_SEARCH_MODEL = "gemini-3.8-flash";
+export const GEMINI_CHAT_MODEL = "gemini-3.8-flash";
 export const GEMINI_TOKEN_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
 export const GEMINI_VOICE_ENDPOINT = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
 
